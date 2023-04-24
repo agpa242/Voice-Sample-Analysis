@@ -1,0 +1,146 @@
+---
+title: "Voice Data - Gender Prediction (Decision Tree Model)"
+author: "Sheik Mohamed Imran"
+date: "November 25, 2017"
+output: html_document
+---
+# Gender Recognition by Voice and Speech Analysis
+
+In this markdown we will create a decision tree prediciton model using 80% of the original data train and remaining 20% to test the predicted model.
+
+The database used here was created to identify a voice as male or female, based upon acoustic properties of the voice and speech. The dataset consists of 3,168 recorded voice samples, collected from male and female speakers. The voice samples are pre-processed by acoustic analysis in R using the seewave and tuneR packages, with an analyzed frequency range of 0hz-280hz (human vocal range).
+
+### Load the initial libraries
+We will be using the follolwing libraries in our markdown
+
+* gmodels    : To display the result of prediction in cross table format
+* dplyr      : Data manipulation package
+* C50        : Decision trees and rule-based models for pattern recognition.
+ 
+```{r , message=F, warning=F}
+suppressPackageStartupMessages(library(gmodels))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(C50))
+```
+
+###Load the input file 
+Load the input file and check the column names. 
+
+```{r}
+voices <- read.csv("../input/voice.csv", header=TRUE)
+colnames(voices)
+```
+
+We can notice that the dataset has a column named 'label' which conflicts with the R parameters, we change this to a more recognizable name: gender.
+
+```{r}
+names(voices)[21] <- "gender"
+```
+
+### Check for NA values
+A dataset containing NA values have a drastic impact in defining and refining the prediction model, it is best practice to validate the dataset before performing any operation.
+```{r}
+sum(complete.cases(voices)) == nrow(voices)
+```
+
+The dataset has no 'NA' values, we can proceed with further processing.
+
+### Perform PCA on dataset
+PCA - Principle Component Analysis is a dimensionality reduction, to extract important varaibles (as components) from a large set of variables. This minimal dimensional data captures as much as useful information from our dataset. PCA works only with numerical data, so is the case here and shall apply it here.
+
+```{r}
+pca <- prcomp(voices[,1:20], retx=TRUE, center=TRUE, scale=TRUE)
+```
+
+Though there are various methods available to extract PCA, here we have used 'prcomp' with following parameters.
+
+* retx    - a logical value indicating whether the rotated variables should be returned.
+* center  - a logical value indicating whether the variables should be shifted to be zero centered. The value is passed to scale.
+* scale   - a logical value indicating whether the variables should be scaled to have unit variance before the analysis takes place.
+
+### Predict
+This function is used to predicte values based on linear model object.
+Parameters passed to this function are:
+
+* object  - variable obtained from earlier step.
+* newdata - the original dataset, excluding the column gender.
+
+Once predicted, combine the original excluded column (gender) to be 'pred' variable.
+
+```{r}
+pred <- predict(pca, newdata=voices[,1:20])
+modeldata <- cbind(pred,target=voices[,21])
+```
+
+### Split dataset 
+Split the dataset into 2 parts for pca training (80%) and validation (20%).
+I have utilized the seed function (PRNG - Pseudo Random Number Generation), to ensure that the same set of reference data is generated, to be used for sample extraction.
+
+More details here: https://stackoverflow.com/questions/13605271/reasons-for-using-the-set-seed-function
+
+```{r}
+set.seed(1023)
+samp <- sample(nrow(modeldata), nrow(modeldata)*0.8)
+modeldata.train <- voices[samp,]
+modeldata.valid <- voices[-samp,]
+```
+
+### Decision Tree Model
+Here I use C50 to create a decision tree model, with following parameters
+
+* trials  : creating max 5 weak learners or number of boosting steps.
+* control : parameter control list.
+* noGlobalPruning : Specify if global pruning needs to be done?
+* CF : Larger values indicates less tree-pruning and viceversa
+* minCases : Minumum cases per leaf-node
+* sample : Percent of the given data to be used as sample for training. Rest will be used for testing internally.
+* winnow : this is an initial algorithm uncovers which predictors have a relationship with the outcome, and ensures that the ﬁnal model is created from only the important predictors.
+* earlyStopping : Indicate if boosting should be stopped early.
+
+```{r}
+fit1<-C5.0(gender ~ ., data=modeldata.train,
+           trials=5,                  
+           control = C5.0Control      
+           (                        
+             noGlobalPruning = FALSE, 
+             CF=0.5,                  
+             minCases=5,              
+             sample = 0.80,            
+             winnow=FALSE,            
+             earlyStopping=TRUE       
+           )
+)
+```
+
+###Summary of the predicted model
+
+```{r}
+summary (fit1)
+```
+
+Notice that boosting give us minimal error: 1.2%
+
+### Prediction of PCs for validation dataset
+Use the model created in earlier step to predict the data in validation dataset
+
+```{r}
+predictions <- predict(fit1, modeldata.valid,type="class")
+df<-data.frame(predicted=predictions, actual=modeldata.valid$gender ) 
+accuracy=sum(as.character(df$actual) == as.character(df$predicted))/nrow(df)
+accuracy
+```
+
+Accuracy of 97.4% is acheived for the model.
+
+###Create cross table to summarize the result
+
+```{r}
+CrossTable(modeldata.valid$gender, predictions, prop.chisq = FALSE,
+           prop.c = FALSE, prop.r = FALSE, dnn = c("actual gender",
+                                                   "predicted gender"))
+
+``` 
+
+###Prediction Result of Validation data:
+* #####Out or 335 females, 328 were predicted correctly as female and 7 were listed wrongly as male.
+* #####Out of 299 males, 299 were predicted correctly as male and 9 were listed wrongly as female.
