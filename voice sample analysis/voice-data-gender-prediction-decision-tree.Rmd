@@ -1,9 +1,4 @@
----
-title: "Voice Data - Gender Prediction (Decision Tree Model)"
-author: "Sheik Mohamed Imran"
-date: "November 25, 2017"
-output: html_document
----
+
 # Gender Recognition by Voice and Speech Analysis
 
 In this markdown we will create a decision tree prediciton model using 80% of the original data train and remaining 20% to test the predicted model.
